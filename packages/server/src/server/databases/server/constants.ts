@@ -25,7 +25,7 @@ export const DEFAULT_DB_ITEMS: { [key: string]: () => any } = {
     ngrok_custom_domain: () => "",
     use_custom_certificate: () => 0,
     password: () => "",
-    auto_caffeinate: () => 0,
+    auto_caffeinate: () => 1,  // FIX #750: Default to enabled to prevent macOS from idling Messages app
     auto_start: () => 0,
     auto_start_method: () => AutoStartMethods.None,
     proxy_service: () => ProxyServices.Cloudflare,

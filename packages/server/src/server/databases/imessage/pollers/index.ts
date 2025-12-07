@@ -135,13 +135,9 @@ export abstract class IMessagePoller extends Loggable {
     }
 
     processMessageEvent(message: Message): string | null {
-        const event = this.getMessageEvent(message);
-        if (!event) return null;
-
-        if (event === "new-entry") {
-            this.cache.events.add(message.guid);
-        }
-
+        // FIX #758: Set message state FIRST to prevent race condition where
+        // cache has the guid but messageStates doesn't, causing getMessageEvent to return null
+        const existingState = this.messageStates[message.guid];
         this.messageStates[message.guid] = {
             dateCreated: message.dateCreated.getTime(),
             isDelivered: message.isDelivered ?? false,
@@ -153,8 +149,23 @@ export abstract class IMessagePoller extends Loggable {
             hasUnsentParts: message.hasUnsentParts
         };
 
+        const event = this.getMessageEvent(message);
+        if (!event) {
+            // Restore previous state if no event (to avoid clobbering valid state)
+            if (existingState) {
+                this.messageStates[message.guid] = existingState;
+            }
+            return null;
+        }
+
+        if (event === "new-entry") {
+            this.cache.events.add(message.guid);
+        }
+
+        // State already set above, no need to set again
         return event;
     }
+
 
     getChatEvent(chat: Chat, defaultEvent = CHAT_READ_STATUS_CHANGED): string | null {
         // If the GUID doesn't exist, it's a new chat

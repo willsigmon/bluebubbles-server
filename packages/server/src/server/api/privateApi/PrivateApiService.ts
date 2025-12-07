@@ -28,6 +28,51 @@ import { Loggable } from "../../lib/logging/Loggable";
 // We only want to allow one write at a time
 const writeLock = new Sema(1);
 
+// FIX #719: Sanitize data before JSON serialization to prevent crashes with URL attributes
+// NSAttributedString objects with URL attributes can contain circular references or
+// special properties that cause JSON.stringify to produce malformed data
+function sanitizeForJson(obj: any, seen = new WeakSet()): any {
+    if (obj === null || obj === undefined) return obj;
+    if (typeof obj !== "object") return obj;
+
+    // Prevent circular reference crashes
+    if (seen.has(obj)) return "[Circular]";
+    seen.add(obj);
+
+    // Handle arrays
+    if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeForJson(item, seen));
+    }
+
+    // Handle special NSAttributedString-like objects
+    if (obj.toJSON && typeof obj.toJSON === "function") {
+        try {
+            return sanitizeForJson(obj.toJSON(), seen);
+        } catch {
+            return "[NSAttributedString]";
+        }
+    }
+
+    // Handle regular objects
+    const result: Record<string, any> = {};
+    for (const key of Object.keys(obj)) {
+        // Skip internal/prototype properties that can cause issues
+        if (key.startsWith("__") || key === "constructor") continue;
+
+        try {
+            const value = obj[key];
+            // Skip functions and symbols
+            if (typeof value === "function" || typeof value === "symbol") continue;
+
+            result[key] = sanitizeForJson(value, seen);
+        } catch {
+            // Skip properties that throw on access
+            result[key] = null;
+        }
+    }
+    return result;
+}
+
 export class PrivateApiService extends Loggable {
     tag = "PrivateApiService";
 
@@ -315,18 +360,27 @@ export class PrivateApiService extends Loggable {
             }
 
             await new Promise<void>((resolve, reject) => {
-                const d: NodeJS.Dict<any> = { action, data };
+                // FIX #719: Sanitize data to prevent crashes with URL attributes in attributedBody
+                const sanitizedData = sanitizeForJson(data);
+                const d: NodeJS.Dict<any> = { action, data: sanitizedData };
 
                 // If we have a transaction, set the transaction ID for the request
                 if (transaction) {
                     d.transactionId = transaction.transactionId;
                 }
 
-                // For each ocket client, write data
-                this.writeToClients(`${JSON.stringify(d)}\n`).then(success => {
-                    if (success) return resolve();
-                    reject();
-                });
+                // For each socket client, write data
+                try {
+                    const jsonStr = JSON.stringify(d);
+                    this.writeToClients(`${jsonStr}\n`).then(success => {
+                        if (success) return resolve();
+                        reject();
+                    });
+                } catch (serializationError: any) {
+                    // FIX #719: Catch JSON serialization errors instead of crashing
+                    this.log.error(`Failed to serialize message data: ${serializationError?.message ?? serializationError}`);
+                    reject(serializationError);
+                }
             });
 
             // If we have a transaction, wait until the transaction is fulfilled to return

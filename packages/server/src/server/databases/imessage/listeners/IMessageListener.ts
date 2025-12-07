@@ -7,6 +7,8 @@ import { IMessageCache, IMessagePoller } from "../pollers";
 import { MessageRepository } from "..";
 import { waitMs } from "@server/helpers/utils";
 import { DebounceSubsequentWithWait } from "@server/lib/decorators/DebounceDecorator";
+import { ScheduledService } from "@server/lib/ScheduledService";
+import { Server } from "@server";
 
 export class IMessageListener extends Loggable {
     tag = "IMessageListener";
@@ -27,6 +29,9 @@ export class IMessageListener extends Loggable {
 
     lastCheck = 0;
 
+    // FIX #750: Add fallback polling service to catch messages when file watcher fails
+    fallbackPoller: ScheduledService | null = null;
+
     constructor({ filePaths, repo, cache }: { filePaths: string[], repo: MessageRepository, cache: IMessageCache }) {
         super();
 
@@ -41,6 +46,12 @@ export class IMessageListener extends Loggable {
     stop() {
         this.stopped = true;
         this.removeAllListeners();
+
+        // FIX #750: Stop fallback poller
+        if (this.fallbackPoller) {
+            this.fallbackPoller.stop();
+            this.fallbackPoller = null;
+        }
     }
 
     addPoller(poller: IMessagePoller) {
@@ -79,6 +90,45 @@ export class IMessageListener extends Loggable {
         });
 
         this.watcher.start();
+
+        // FIX #750: Start fallback polling service using db_poll_interval setting
+        // This ensures messages are caught even if file watcher fails (macOS idle, App Nap, etc.)
+        const pollInterval = Server().repo.getConfig("db_poll_interval") as number ?? 5000;
+        // Use minimum 3 seconds to avoid excessive polling, max 30 seconds
+        const safeInterval = Math.max(3000, Math.min(pollInterval, 30000));
+        this.log.debug(`Starting fallback poller with interval: ${safeInterval}ms`);
+
+        this.fallbackPoller = new ScheduledService(async () => {
+            if (this.stopped) return;
+
+            const now = Date.now();
+            const timeSinceLastCheck = now - this.lastCheck;
+
+            // Only poll if we haven't checked recently (avoid duplicate work from file watcher)
+            if (timeSinceLastCheck > safeInterval * 0.8) {
+                this.log.debug(`Fallback poll triggered (${timeSinceLastCheck}ms since last check)`);
+                await this.handleFallbackPoll();
+            }
+        }, safeInterval, true);
+    }
+
+    // FIX #750: Separate handler for fallback polling to avoid debounce conflicts
+    private async handleFallbackPoll() {
+        await this.processLock.acquire();
+        try {
+            const now = Date.now();
+            let afterTime = this.lastCheck - 30000;
+            if (afterTime > now || afterTime <= 0) {
+                afterTime = now - 60000; // Default to 1 minute ago
+            }
+            await this.poll(new Date(afterTime));
+            this.lastCheck = now;
+            this.cache.trimCaches();
+        } catch (error) {
+            this.log.error(`Error in fallback poll: ${error}`);
+        } finally {
+            this.processLock.release();
+        }
     }
 
     @DebounceSubsequentWithWait('IMessageListener.handleChangeEvent', 500)
