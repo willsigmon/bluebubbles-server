@@ -189,8 +189,9 @@ export const sendMessage = (chatGuid: string, message: string, attachment: strin
     }
 
     // Return the script
+    // FIX: Escape chatGuid to prevent AppleScript injection
     return `tell application "Messages"
-        set targetChat to a reference to chat id "${chatGuid}"
+        set targetChat to a reference to chat id "${escapeOsaExp(chatGuid)}"
 
         ${attachmentScpt}
         ${messageScpt}
@@ -216,10 +217,11 @@ export const sendMessageFallback = (chatGuid: string, message: string, attachmen
     // Support older OS versions with their old naming scheme
     const participant = isMinBigSur ? "participant" : "buddy";
     const serviceScript = buildServiceScript(service);
+    // FIX: Escape address to prevent AppleScript injection
     return `tell application "Messages"
         ${serviceScript}
-        set targetBuddy to ${participant} "${address}" of targetService
-        
+        set targetBuddy to ${participant} "${escapeOsaExp(address)}" of targetService
+
         ${attachmentScpt}
         ${messageScpt}
     end tell`;
@@ -240,7 +242,8 @@ export const restartMessages = (delaySeconds = 3) => {
  * The AppleScript used to start a chat with some number of participants
  */
 export const startChat = (participants: string[], service: string, message: string = null) => {
-    const formatted = participants.map(buddy => `buddy "${buddy}" of targetService`);
+    // FIX: Escape participant names to prevent AppleScript injection
+    const formatted = participants.map(buddy => `buddy "${escapeOsaExp(buddy)}" of targetService`);
     const buddies = formatted.join(", ");
 
     const messageScpt = buildMessageScript(message, "thisChat");
@@ -267,10 +270,11 @@ export const startChat = (participants: string[], service: string, message: stri
 export const sendAttachmentAccessibility = (attachmentPath: string, participants: string[]) => {
     const recipientCommands = [];
     // Key code 125 == down arrow
+    // FIX: Escape participant to prevent AppleScript injection
     for (const i of participants) {
         recipientCommands.push(`
             delay 2
-            keystroke "${i}"
+            keystroke "${escapeOsaExp(i)}"
             delay 1
             key code 125
             delay 1
@@ -278,7 +282,8 @@ export const sendAttachmentAccessibility = (attachmentPath: string, participants
     }
 
     // The AppleScript copy _only_ works on Monterey
-    const scriptCopy = `tell application "System Events" to set theFile to POSIX file "${attachmentPath}"`;
+    // FIX: Escape attachmentPath to prevent AppleScript injection
+    const scriptCopy = `tell application "System Events" to set theFile to POSIX file "${escapeOsaExp(attachmentPath)}"`;
     const scriptClip = `set the clipboard to theFile`;
 
     // The CMD + A & Delete will clear any existing text or attachments

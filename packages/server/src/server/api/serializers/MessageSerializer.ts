@@ -54,7 +54,7 @@ export class MessageSerializer {
                 // Iterate over the chats for this message and load the participants.
                 // We only need to load the participants for group chats since DMs don't have them.
                 // Once we load the chat participants for a chat, we will cache it to be used later.
-                for (let k = 0; k < (messages[i]?.chats ?? []).length; i++) {
+                for (let k = 0; k < (messages[i]?.chats ?? []).length; k++) {
                     // If it's not a group, skip it (style == 43; DM = 45)
                     // Also skip it if there are already participants
                     if (messages[i]?.chats[k].style !== 43 || isNotEmpty(messages[i]?.chats[k].participants)) continue;

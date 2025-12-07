@@ -597,6 +597,8 @@ export class MessageRepository extends Loggable {
         let result = null;
 
         // Get messages with sender and the chat it's from
+        // FIX: Use parameterized query to prevent SQL injection
+        const mimeTypePattern = `${mediaType}%`;
         if (!after) {
             result = await this.db.getRepository(Chat).query(
                 `SELECT
@@ -608,8 +610,9 @@ export class MessageRepository extends Loggable {
                 JOIN message ON message.ROWID = cmj.message_id
                 JOIN message_attachment_join AS maj ON message.ROWID = maj.message_id
                 JOIN attachment ON attachment.ROWID = maj.attachment_id
-                WHERE attachment.mime_type LIKE '${mediaType}%'
-                GROUP BY chat.guid;`
+                WHERE attachment.mime_type LIKE ?
+                GROUP BY chat.guid;`,
+                [mimeTypePattern]
             );
         } else {
             result = await this.db.getRepository(Chat).query(
@@ -622,10 +625,11 @@ export class MessageRepository extends Loggable {
                 JOIN message ON message.ROWID = cmj.message_id
                 JOIN message_attachment_join AS maj ON message.ROWID = maj.message_id
                 JOIN attachment ON attachment.ROWID = maj.attachment_id
-                WHERE message.date >= ? AND attachment.mime_type LIKE '${mediaType}%'
+                WHERE message.date >= ? AND attachment.mime_type LIKE ?
                 GROUP BY chat.guid;`,
                 [
-                    convertDateTo2001Time(after)
+                    convertDateTo2001Time(after),
+                    mimeTypePattern
                 ]
             );
         }
@@ -647,20 +651,24 @@ export class MessageRepository extends Loggable {
 
         let result = null;
 
+        // FIX: Use parameterized query to prevent SQL injection
+        const mimePattern = `${mType}%`;
         // Get messages with sender and the chat it's from
         if (!after) {
             result = await this.db.getRepository(Chat).query(
                 `SELECT COUNT(attachment.ROWID) AS media_count
                 FROM attachment
-                WHERE attachment.mime_type LIKE '${mType}%';`
+                WHERE attachment.mime_type LIKE ?;`,
+                [mimePattern]
             );
         } else {
             result = await this.db.getRepository(Chat).query(
                 `SELECT COUNT(attachment.ROWID) AS media_count
                 FROM attachment
-                WHERE attachment.date >= ? AND attachment.mime_type LIKE '${mType}%';`,
+                WHERE attachment.date >= ? AND attachment.mime_type LIKE ?;`,
                 [
-                    convertDateTo2001Time(after)
+                    convertDateTo2001Time(after),
+                    mimePattern
                 ]
             );
         }

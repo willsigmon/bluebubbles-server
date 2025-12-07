@@ -25,6 +25,9 @@ export class WebhookRouter {
         const { url, events } = ctx.request.body;
         const webhook = await Server().repo.addWebhook(url, events);
 
+        // FIX: Invalidate webhook cache after creating a new webhook
+        Server().webhookService.invalidateCache();
+
         // Convert the events to a list (from json array)
         webhook.events = JSON.parse(webhook.events);
 
@@ -40,6 +43,9 @@ export class WebhookRouter {
 
         // Delete it
         await Server().repo.deleteWebhook({ id: Number.parseInt(id as string) });
+
+        // FIX: Invalidate webhook cache after deleting a webhook
+        Server().webhookService.invalidateCache();
 
         // Send success
         return new Success(ctx, { message: "Successfully deleted webhook!" }).send();

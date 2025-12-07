@@ -8,6 +8,7 @@ import { sync } from "read-chunk";
 import { Server } from "@server";
 import {
     escapeDoubleQuote,
+    escapeShellArg,
     concatUint8Arrays,
     parseMetadataString,
     isNotEmpty,
@@ -301,7 +302,8 @@ export class FileSystem {
     }
 
     private static readLastLines({ filePath, count = 100 }: { filePath: string; count?: number }): Promise<string> {
-        return FileSystem.execShellCommand(`tail -n ${count} ${filePath}`);
+        // FIX: Escape filePath to prevent command injection
+        return FileSystem.execShellCommand(`tail -n ${count} "${escapeShellArg(filePath)}"`);
     }
 
     /**
@@ -527,8 +529,9 @@ export class FileSystem {
 
     static async convertCafToMp3(originalPath: string, outputPath: string): Promise<void> {
         const oldPath = FileSystem.getRealPath(originalPath);
+        // FIX: Escape paths to prevent command injection
         const output = await FileSystem.execShellCommand(
-            `/usr/bin/afconvert -f m4af -d aac "${oldPath}" "${outputPath}"`
+            `/usr/bin/afconvert -f m4af -d aac "${escapeShellArg(oldPath)}" "${escapeShellArg(outputPath)}"`
         );
         if (isNotEmpty(output) && output.includes("Error:")) {
             throw Error(`Failed to convert audio to MP3: ${output}`);
@@ -537,8 +540,9 @@ export class FileSystem {
 
     static async convertMp3ToCaf(originalPath: string, outputPath: string): Promise<void> {
         const oldPath = FileSystem.getRealPath(originalPath);
+        // FIX: Escape paths to prevent command injection
         const output = await FileSystem.execShellCommand(
-            `/usr/bin/afconvert -f caff -d LEI16@44100 -c 1 "${oldPath}" "${outputPath}"`
+            `/usr/bin/afconvert -f caff -d LEI16@44100 -c 1 "${escapeShellArg(oldPath)}" "${escapeShellArg(outputPath)}"`
         );
         if (isNotEmpty(output) && output.includes("Error:")) {
             throw Error(`Failed to convert audio to CAF: ${output}`);
@@ -547,8 +551,9 @@ export class FileSystem {
 
     static async convertToJpg(originalPath: string, outputPath: string): Promise<void> {
         const oldPath = FileSystem.getRealPath(originalPath);
+        // FIX: Escape paths to prevent command injection
         const output = await FileSystem.execShellCommand(
-            `/usr/bin/sips --setProperty "format" "jpeg" "${oldPath}" --out "${outputPath}"`
+            `/usr/bin/sips --setProperty "format" "jpeg" "${escapeShellArg(oldPath)}" --out "${escapeShellArg(outputPath)}"`
         );
         if (isNotEmpty(output) && output.includes("Error:")) {
             throw Error(`Failed to convert image to JPEG: ${output}`);
@@ -571,7 +576,9 @@ export class FileSystem {
 
     static async getFileMetadata(filePath: string): Promise<{ [key: string]: string }> {
         try {
-            return parseMetadataString(await FileSystem.execShellCommand(`mdls "${FileSystem.getRealPath(filePath)}"`));
+            // FIX: Escape path to prevent command injection
+            const safePath = escapeShellArg(FileSystem.getRealPath(filePath));
+            return parseMetadataString(await FileSystem.execShellCommand(`mdls "${safePath}"`));
         } catch (ex: any) {
             return null;
         }
@@ -712,7 +719,8 @@ export class FileSystem {
     }
 
     static async killProcess(name: string): Promise<void> {
-        await FileSystem.execShellCommand(`killall "${name}"`);
+        // FIX: Escape process name to prevent command injection
+        await FileSystem.execShellCommand(`killall "${escapeShellArg(name)}"`);
     }
 
     static async processIsRunning(name: string): Promise<boolean> {
@@ -788,7 +796,7 @@ export class FileSystem {
     static async lockMacOs(): Promise<void> {
         const pyPath = path.join(FileSystem.resources, "macos", "tools", "lock_screen_immediately.py");
         if (!fs.existsSync(pyPath)) throw Error("Lock screen script not found!");
-
-        await FileSystem.execShellCommand(`python ${pyPath}`);
+        // FIX: Quote path to prevent command injection
+        await FileSystem.execShellCommand(`python "${escapeShellArg(pyPath)}"`);
     }
 }

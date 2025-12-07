@@ -242,6 +242,23 @@ export const escapeOsaExp = (input: string) => {
 };
 
 /**
+ * Escape a shell argument for safe use inside double quotes.
+ * Prevents command injection via $(cmd), `cmd`, $VAR, and other shell metacharacters.
+ * FIX: Added to prevent command injection vulnerabilities
+ *
+ * @param input String to sanitize for shell use
+ */
+export const escapeShellArg = (input: string): string => {
+    if (!input) return input;
+    return input
+        .replace(/\\/g, "\\\\")   // Escape backslashes first
+        .replace(/"/g, '\\"')     // Escape double quotes
+        .replace(/\$/g, "\\$")    // Escape $ to prevent variable expansion and $(cmd)
+        .replace(/`/g, "\\`")     // Escape backticks to prevent `cmd`
+        .replace(/!/g, "\\!");    // Escape ! for history expansion in some shells
+};
+
+/**
  * Removes whitespace characters
  *
  * @param input String to sanitize

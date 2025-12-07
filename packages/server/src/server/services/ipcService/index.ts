@@ -155,16 +155,24 @@ export class IPCService extends Loggable {
 
         ipcMain.handle("create-webhook", async (event, payload) => {
             const res = await Server().repo.addWebhook(payload.url, payload.events);
+            // FIX: Invalidate webhook cache after creating
+            Server().webhookService.invalidateCache();
             const output = { id: res.id, url: res.url, events: res.events, created: res.created };
             return output;
         });
 
         ipcMain.handle("delete-webhook", async (event, args) => {
-            return await Server().repo.deleteWebhook({ url: args.url, id: args.id });
+            const result = await Server().repo.deleteWebhook({ url: args.url, id: args.id });
+            // FIX: Invalidate webhook cache after deleting
+            Server().webhookService.invalidateCache();
+            return result;
         });
 
         ipcMain.handle("update-webhook", async (event, args) => {
-            return await Server().repo.updateWebhook({ id: args.id, url: args?.url, events: args?.events });
+            const result = await Server().repo.updateWebhook({ id: args.id, url: args?.url, events: args?.events });
+            // FIX: Invalidate webhook cache after updating
+            Server().webhookService.invalidateCache();
+            return result;
         });
 
         ipcMain.handle("contact-permission-status", async (event, _) => {
